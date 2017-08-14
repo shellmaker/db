@@ -7,14 +7,14 @@ set sqlprompt           "_USER'@'_CONNECT_IDENTIFIER=> "
 define _editor=vi
 set echo on
 
-#SQLPLUS /NOLOG
+#####SQLPLUS /NOLOG
 sqlplus /nolog <<EOF
 connect / as sysdba
 oradebug dump systemstate 266
 oradebug tracefile_name
 EOF
 
-#SQLPLUS -s
+#####SQLPLUS -s
 output=`sqlplus -s /nolog <<EOF
 connect / as sysdba
 oradebug setmypid
@@ -26,7 +26,7 @@ EOF`
 trcfile=`echo $output | awk '{print $NF}'`
 grep SSKGXPT $trcfile
 
-#SQLPLUS KSH
+######SQLPLUS KSH
 #!/bin/ksh
 
 get_asm() {
@@ -45,9 +45,26 @@ from gv\$asm_disk;
 EOF
 }
 
+#####SQLPLUS WRAPPED
 ASMDISK=$1
 if [ ${ASMDISK}"x" == "x" ]; then
     get_asm;
 else
     get_asm | egrep "INST_ID|^--|${ASMDISK}"
 fi
+
+set echo on
+set time on
+set timing on
+
+ALTER SESSION SET recyclebin = OFF;
+alter session set parallel_force_local=FALSE;
+alter session enable parallel dml;
+alter session enable parallel ddl;
+select sid from v$mystat where rownum = 1;
+
+alter table table_owner.big_target_table disable constraint btt_pk;
+drop index table_owner.btt_pk;
+
+insert /*+ append parallel(t,64) */ into table_owner.big_target_table t
+select /*+ parallel(s,64)*/ * from source_owner.big_source_table s;
